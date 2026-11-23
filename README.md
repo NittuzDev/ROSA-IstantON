@@ -188,8 +188,7 @@ oc create secret docker-registry ecr-pull \
 helm upgrade --install instanton-demo ./helm/instanton-demo \
   --namespace instanton-demo \
   --set image.repository="${REGISTRY}/instanton-demo" \
-  --set image.tag=1.0.0 \
-  --set imagePullSecrets[0].name=ecr-pull
+  --set image.tag=1.0.0
 ```
 
 Omit `imagePullSecrets[0].name` when you did not create `ecr-pull`.
