@@ -1,0 +1,52 @@
+{{- if .Values.scc.create }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ .Values.scc.name }}
+  labels:
+    {{- include "instanton-demo.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/description: >-
+      Allows a non-root InstantOn restore for the service account in this release.
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - CHECKPOINT_RESTORE
+  - SETPCAP
+defaultAddCapabilities:
+  - CHECKPOINT_RESTORE
+  - SETPCAP
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: 10
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+  - KILL
+  - MKNOD
+  - SETUID
+  - SETGID
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - runtime/default
+  - unconfined
+supplementalGroups:
+  type: RunAsAny
+users:
+  - system:serviceaccount:{{ .Release.Namespace }}:{{ include "instanton-demo.serviceAccountName" . }}
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+{{- end }}

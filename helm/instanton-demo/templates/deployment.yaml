@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "instanton-demo.fullname" . }}
+  labels:
+    {{- include "instanton-demo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "instanton-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "instanton-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      # Pod field. Putting this on the container is ignored and the pod falls
+      # back to the default service account, which cannot use scc-cap-cr.
+      serviceAccountName: {{ include "instanton-demo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.pod.hostUsers }}
+      hostUsers: true
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        {{- if .Values.instanton.enabled }}
+        seccompProfile:
+          type: Unconfined
+        {{- else }}
+        seccompProfile:
+          type: RuntimeDefault
+        {{- end }}
+      containers:
+        - name: instanton-demo
+          image: "{{ required "Set image.repository to the pushed image path, without the tag" .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 9080
+              protocol: TCP
+          env:
+            - name: WLP_LOGGING_CONSOLE_FORMAT
+              value: simple
+            {{- if .Values.instanton.enabled }}
+            - name: CRIU_RESTORE_DISABLE_RECOVERY
+              value: {{ .Values.instanton.disableRecovery | quote }}
+            {{- end }}
+          # Container field. Capabilities set on the pod securityContext are
+          # dropped by the API, and CRIU then fails with "Operation not permitted".
+          securityContext:
+            privileged: false
+            runAsNonRoot: true
+            {{- if .Values.instanton.enabled }}
+            # The checkpoint was taken as UID 1001. Restore must run as that user.
+            # scc-cap-cr allows it. restricted-v2 would reject 1001 because it is
+            # outside the project UID range, so the baseline path leaves the UID unset.
+            runAsUser: 1001
+            allowPrivilegeEscalation: true
+            seccompProfile:
+              type: Unconfined
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHECKPOINT_RESTORE
+                - SETPCAP
+            {{- else }}
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

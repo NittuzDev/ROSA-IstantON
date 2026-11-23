@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "instanton-demo.fullname" . }}
+  labels:
+    {{- include "instanton-demo.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "instanton-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 9080
+      targetPort: http
+      protocol: TCP

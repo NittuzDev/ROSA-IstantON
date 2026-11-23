@@ -1,0 +1,62 @@
+# Security context constraint for restoring an Open Liberty InstantOn image.
+#
+# Based on the IBM example (scc-cap-cr), with two changes required for a ROSA test:
+# - seccompProfiles includes unconfined. Current OpenShift cri-o default profiles
+#   block system calls CRIU needs (clone3, ptrace, vmsplice).
+# - The constraint is granted only to liberty-instanton-sa in instanton-demo.
+#   The IBM sample also lists system:authenticated, which would give every
+#   logged-in user these capabilities.
+#
+# Cluster-admin is required to create an SCC. Apply this before the Helm release.
+# If you install into another namespace or service account, change the users entry
+# or run: oc adm policy add-scc-to-user scc-cap-cr -z <sa> -n <namespace>
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: scc-cap-cr
+  annotations:
+    kubernetes.io/description: >-
+      Allows a non-root InstantOn restore. Adds CHECKPOINT_RESTORE and SETPCAP,
+      permits privilege escalation for those capabilities, and allows an
+      unconfined seccomp profile so CRIU can restore the checkpoint.
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - CHECKPOINT_RESTORE
+  - SETPCAP
+defaultAddCapabilities:
+  - CHECKPOINT_RESTORE
+  - SETPCAP
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: 10
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+  - KILL
+  - MKNOD
+  - SETUID
+  - SETGID
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - runtime/default
+  - unconfined
+supplementalGroups:
+  type: RunAsAny
+users:
+  - system:serviceaccount:instanton-demo:liberty-instanton-sa
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
