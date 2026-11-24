@@ -1,0 +1,115 @@
+{{- if .Values.instanton }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: liberty-instanton-sa
+---
+{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      # Pod field. scc-cap-cr is granted to this service account.
+      # The baseline uses default so restricted-v2 can admit it.
+      serviceAccountName: {{ if .Values.instanton }}liberty-instanton-sa{{ else }}default{{ end }}
+      {{- with .Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: {{ if .Values.instanton }}Unconfined{{ else }}RuntimeDefault{{ end }}
+      containers:
+        - name: app
+          image: {{ required "Set image to the full reference, including the tag" .Values.image | quote }}
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 9080
+          env:
+            - name: WLP_LOGGING_CONSOLE_FORMAT
+              value: simple
+            {{- if .Values.instanton }}
+            # A failed restore exits instead of starting the server cold.
+            - name: CRIU_RESTORE_DISABLE_RECOVERY
+              value: "true"
+            {{- end }}
+          # Container field. This is where the process receives the capabilities.
+          securityContext:
+            privileged: false
+            runAsNonRoot: true
+            {{- if .Values.instanton }}
+            # The checkpoint was taken as UID 1001. Restore must use that user.
+            runAsUser: 1001
+            allowPrivilegeEscalation: true
+            seccompProfile:
+              type: Unconfined
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHECKPOINT_RESTORE
+                - SETPCAP
+            {{- else }}
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: 9080
+      targetPort: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  to:
+    kind: Service
+    name: {{ .Release.Name }}
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

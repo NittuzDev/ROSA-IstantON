@@ -1,7 +1,6 @@
 apiVersion: v2
 name: instanton-demo
-description: Deploy the Open Liberty InstantOn demo on OpenShift or ROSA
+description: Open Liberty InstantOn demo on OpenShift or ROSA
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
-kubeVersion: ">=1.27.0-0"
