@@ -4,7 +4,9 @@
 # image layer. Build with Podman and the capabilities in scripts/build-instanton.sh.
 # Docker cannot grant those capabilities to a build step.
 
-FROM maven:3.9-eclipse-temurin-17 AS build
+
+
+FROM docker.io/library/maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
 COPY pom.xml .
 COPY src ./src
