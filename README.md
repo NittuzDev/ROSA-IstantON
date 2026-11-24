@@ -73,8 +73,8 @@ sudo setsebool virt_sandbox_use_netlink 1
 Log in to ECR and build. Replace the account and region.
 
 ```bash
-export AWS_REGION=us-east-1
-export AWS_ACCOUNT=123456789012
+export AWS_REGION=us-east-2
+export AWS_ACCOUNT=703671903047
 export REGISTRY="${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 export IMAGE="${REGISTRY}/instanton-demo:1.0.0"
 
