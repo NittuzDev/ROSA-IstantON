@@ -29,11 +29,14 @@ References:
 
 | Path | Purpose |
 | --- | --- |
+| `pom.xml` | Builds the war. The only dependency is the servlet API, provided by Liberty. |
+| `src/main/java/com/example/instanton/StatusServlet.java` | The application: one servlet on `/status`. |
+| `src/main/liberty/config/server.xml` | Liberty config. Enables `servlet-6.0` only. |
 | `Containerfile` | Multi-stage build. The last instruction is `checkpoint.sh afterAppStart`. |
 | `Containerfile.baseline` | Same application with no checkpoint, for the timing comparison. |
 | `openshift/namespace.yaml` | Test project. Pod Security Admission is `privileged` so it allows the SCC. |
 | `openshift/scc-cap-cr.yaml` | SCC you apply as cluster-admin. |
-| `helm/instanton-demo` | Deployment, Service, Route, and the service account. |
+| `helm/instanton-demo` | One values file and one template: ServiceAccount, Deployment, Service, Route. |
 | `scripts/build-instanton.sh` | Podman build with the three checkpoint capabilities. |
 | `scripts/check-restore.sh` | Pass/fail check against the pod log and the route. |
 
@@ -128,7 +131,6 @@ Pass: the log contains `CWWKC0452I` and `CWWKF0011I`, and the reported start tim
 
 ```bash
 curl -fsS http://127.0.0.1:9080/status
-curl -fsS http://127.0.0.1:9080/health
 ```
 
 Stop the container with `Ctrl-C`.
@@ -187,22 +189,15 @@ oc create secret docker-registry ecr-pull \
 ```bash
 helm upgrade --install instanton-demo ./helm/instanton-demo \
   --namespace instanton-demo \
-  --set image.repository="${REGISTRY}/instanton-demo" \
-  --set image.tag=1.0.0
+  --set image="${REGISTRY}/instanton-demo:1.0.0" \
+  --set imagePullSecret=ecr-pull
 ```
 
-Omit `imagePullSecrets[0].name` when you did not create `ecr-pull`.
+Omit `--set imagePullSecret=ecr-pull` when you did not create that secret.
 
-The chart creates:
+The chart creates the service account `liberty-instanton-sa`, a Deployment, a Service on port 9080, and an edge Route. It does not create the SCC.
 
-- Service account `liberty-instanton-sa`
-- A Deployment whose **container** `securityContext` adds `CHECKPOINT_RESTORE` and `SETPCAP`, drops every other capability, and sets `seccompProfile: Unconfined`
-- A Service on port 9080
-- An edge Route
-
-`serviceAccountName` is a pod field. The capabilities are a container field. Swapping them is the usual reason a pod reaches `Running` and then logs `Operation not permitted` on `/opt/criu/criu`.
-
-Helm does not create the SCC unless you set `--set scc.create=true`. Leave that false if you applied `openshift/scc-cap-cr.yaml`. Setting it true makes the release own the same SCC name and rewrites `users` to the release namespace.
+`serviceAccountName` is a pod field. The capabilities are a container field. The container adds `CHECKPOINT_RESTORE` and `SETPCAP`, drops every other capability, sets `seccompProfile: Unconfined`, and runs as UID 1001. Swapping the service account and the capabilities is the usual reason a pod reaches `Running` and then logs `Operation not permitted` on `/opt/criu/criu`.
 
 ## 6. Run the test
 
@@ -222,7 +217,7 @@ Or do the same checks by hand.
 
 ```bash
 oc get pod -n instanton-demo \
-  -l app.kubernetes.io/instance=instanton-demo \
+  -l app=instanton-demo \
   -o jsonpath='{.items[0].metadata.annotations.openshift\.io/scc}{"\n"}'
 ```
 
@@ -231,7 +226,7 @@ Expected value: `scc-cap-cr`.
 **Restore message and startup time**
 
 ```bash
-oc logs -n instanton-demo -l app.kubernetes.io/instance=instanton-demo \
+oc logs -n instanton-demo -l app=instanton-demo \
   | grep -E 'CWWKC0452I|CWWKF0011I|CWWKE0961I'
 ```
 
@@ -250,11 +245,9 @@ The fractions vary. For this application they should be well under two seconds. 
 ROUTE="$(oc get route -n instanton-demo instanton-demo -o jsonpath='{.spec.host}')"
 curl -fsS "https://${ROUTE}/status"
 echo
-curl -fsS "https://${ROUTE}/health"
-echo
 ```
 
-Open `https://<route>/` in a browser as well. The page is only a reachability check.
+Open `https://<route>/status` in a browser as well. The response is only a reachability check. The log line is the result.
 
 Read `/status` this way:
 
@@ -275,21 +268,18 @@ scripts/build-instanton.sh "${BASELINE}" baseline
 sudo podman push "${BASELINE}"
 ```
 
-Deploy it beside the InstantOn release. `instanton.enabled=false` drops the extra capabilities and uses the normal `RuntimeDefault` seccomp profile, so `restricted-v2` can admit it. The baseline uses the `default` service account so it does not collide with `liberty-instanton-sa`, and it does not set `runAsUser: 1001`. That UID is outside the project range, which `restricted-v2` rejects. OpenShift assigns an in-range UID. The InstantOn pod still runs as 1001, because that is the UID the checkpoint was taken as.
+Deploy it beside the InstantOn release. `instanton=false` drops the extra capabilities, uses the `RuntimeDefault` seccomp profile, and selects the `default` service account, so `restricted-v2` can admit it. It does not set `runAsUser: 1001`. That UID is outside the project range, which `restricted-v2` rejects. OpenShift assigns an in-range UID. The InstantOn pod still runs as 1001, because that is the UID the checkpoint was taken as.
 
 ```bash
 helm upgrade --install instanton-baseline ./helm/instanton-demo \
   --namespace instanton-demo \
-  --set image.repository="${REGISTRY}/instanton-demo" \
-  --set image.tag=baseline \
-  --set instanton.enabled=false \
-  --set serviceAccount.create=false \
-  --set serviceAccount.name=default \
-  --set imagePullSecrets[0].name=ecr-pull
+  --set image="${REGISTRY}/instanton-demo:baseline" \
+  --set instanton=false \
+  --set imagePullSecret=ecr-pull
 ```
 
 ```bash
-oc logs -n instanton-demo -l app.kubernetes.io/instance=instanton-baseline \
+oc logs -n instanton-demo -l app=instanton-baseline \
   | grep -E 'CWWKC0452I|CWWKF0011I'
 ```
 
@@ -306,7 +296,7 @@ helm uninstall instanton-baseline --namespace instanton-demo
 Look at the pod events first:
 
 ```bash
-oc describe pod -n instanton-demo -l app.kubernetes.io/instance=instanton-demo
+oc describe pod -n instanton-demo -l app=instanton-demo
 oc get events -n instanton-demo --sort-by='.lastTimestamp'
 ```
 
@@ -318,7 +308,7 @@ oc get events -n instanton-demo --sort-by='.lastTimestamp'
 | Pod `Running`, log says `/opt/criu/criu: Operation not permitted` and `CWWKE0961I` | The process did not receive the capabilities. | `oc get pod -o yaml` and confirm the **container** `securityContext.capabilities.add` lists both capabilities. Confirm the SCC annotation is `scc-cap-cr`. |
 | `restore.log` mentions `clone3`, `ptrace`, or `vmsplice` with `Operation not permitted` | seccomp blocked CRIU. | The container `seccompProfile.type` must be `Unconfined`, and the SCC `seccompProfiles` must include `unconfined`. |
 | `ptrace(PTRACE_TRACEME) failed` in `restore.log` | Yama is blocking ptrace. | `kernel.yama.ptrace_scope` on the node must be `0` or `1`. This is a node setting; changing it is a cluster-admin decision and is outside this demo. |
-| `CrashLoopBackOff` and `oc logs` is empty | The failed process already exited. | `oc logs --previous`. With `instanton.disableRecovery=true`, a failed restore is supposed to exit. |
+| `CrashLoopBackOff` and `oc logs` is empty | The failed process already exited. | `oc logs --previous`. With `CRIU_RESTORE_DISABLE_RECOVERY=true`, a failed restore is supposed to exit. |
 | `CWWKF0011I` after several seconds and no `CWWKC0452I` | The image has no checkpoint, or recovery started the server cold. | Confirm the running image tag is the InstantOn tag, not `baseline`. Search the build log for `CWWKC0451I`. |
 | `exec format error` or the pod never starts on an `arm64` node | The image and the node architecture differ. | Rebuild on x86_64 and schedule onto `amd64` workers. |
 | Image pull `403` or `unauthorized` | The ECR token expired or the pull secret is missing. | Recreate `ecr-pull` and restart the pod. |

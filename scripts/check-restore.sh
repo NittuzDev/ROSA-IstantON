@@ -12,7 +12,7 @@ if ! command -v oc >/dev/null 2>&1; then
   exit 1
 fi
 
-PODS="$(oc get pods -n "${NS}" -l "app.kubernetes.io/instance=${RELEASE}" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')"
+PODS="$(oc get pods -n "${NS}" -l "app=${RELEASE}" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')"
 if [[ -z "${PODS// /}" ]]; then
   echo "FAIL: no pods in namespace ${NS} for Helm release ${RELEASE}" >&2
   exit 1
@@ -53,7 +53,7 @@ for POD in ${PODS}; do
   echo
 done
 
-ROUTE="$(oc get route -n "${NS}" -l "app.kubernetes.io/instance=${RELEASE}" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || true)"
+ROUTE="$(oc get route -n "${NS}" -l "app=${RELEASE}" -o jsonpath='{.items[0].spec.host}' 2>/dev/null || true)"
 if [[ -n "${ROUTE}" ]]; then
   if ! command -v curl >/dev/null 2>&1; then
     echo "curl is not installed; skipped https://${ROUTE}/status"

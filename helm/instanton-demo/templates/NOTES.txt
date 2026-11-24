@@ -1,17 +1,6 @@
-1. Watch the pod become Ready. A failed restore with recovery disabled exits, so the pod restarts instead of becoming Ready.
+Pass requires this line in the pod log:
 
-   oc get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -w
+  CWWKC0452I: The Liberty server process resumed operation from a checkpoint
 
-2. Confirm which SCC admitted the pod. InstantOn requires {{ .Values.scc.name }}.
-
-   oc get pod -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -o jsonpath='{.items[0].metadata.annotations.openshift\.io/scc}{"\n"}'
-
-3. Pass requires this line in the log:
-
-   CWWKC0452I: The Liberty server process resumed operation from a checkpoint
-
-   oc logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} | grep -E 'CWWKC0452I|CWWKF0011I|CWWKE0961I'
-
-4. Or run the checker from the repo:
-
-   scripts/check-restore.sh {{ .Release.Namespace }} {{ .Release.Name }}
+  oc get pods -n {{ .Release.Namespace }} -l app={{ .Release.Name }}
+  oc logs -n {{ .Release.Namespace }} -l app={{ .Release.Name }} | grep CWWKC0452I

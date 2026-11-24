@@ -1,50 +1,10 @@
-replicaCount: 1
+# Full image reference, including the tag.
+# Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/instanton-demo:1.0.0
+image: ""
 
-image:
-  # Registry path without the tag. Example:
-  # 123456789012.dkr.ecr.us-east-1.amazonaws.com/instanton-demo
-  repository: ""
-  tag: "1.0.0"
-  pullPolicy: Always
+# docker-registry secret in this namespace. Leave empty to skip.
+imagePullSecret: ""
 
-imagePullSecrets:
-  - name: ecr-pull
-
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount:
-  create: true
-  name: liberty-instanton-sa
-
-# Leave false when you apply openshift/scc-cap-cr.yaml yourself.
-# Set true to let this release own the cluster-scoped SCC.
-scc:
-  create: false
-  name: scc-cap-cr
-
-instanton:
-  # true: request CHECKPOINT_RESTORE and SETPCAP and use seccomp Unconfined.
-  # false: restricted-compatible settings for the baseline image.
-  enabled: true
-  # true makes a failed restore exit instead of silently starting from scratch.
-  # That keeps a failed test from looking like a successful slow start.
-  disableRecovery: true
-
-# Set true only if restore fails because the cluster puts pods in a user namespace.
-pod:
-  hostUsers: false
-
-route:
-  enabled: true
-
-resources:
-  requests:
-    cpu: 100m
-    memory: 512Mi
-  limits:
-    memory: 1Gi
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
+# true: restore the InstantOn checkpoint. Requires the scc-cap-cr constraint.
+# false: run the baseline image under the restricted policy.
+instanton: true
